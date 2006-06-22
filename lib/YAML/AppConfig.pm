@@ -5,7 +5,7 @@ use Carp;
 use UNIVERSAL qw(isa);
 use Storable qw(dclone);  # For Deep Copy
 
-our $VERSION = '0.10';
+our $VERSION = '0.12';
 
 # Load YAML::Syck and, failing that, load YAML.
 eval {
@@ -29,6 +29,8 @@ sub new {
     $self->{config} = {};
     $self->{config} = LoadFile( $self->{file} ) if exists $self->{file};
     $self->{config} = Load( $self->{string} ) if exists $self->{string};
+    $self->{config} = dclone( $self->{object}->config ) 
+        if exists $self->{object};
     $self->_install_accessors();  # Install convenience accessors.
 
     return $self;
@@ -126,12 +128,16 @@ sub _resolve_refs {
 sub _resolve_scalar {
     my ( $self, $value ) = @_;
     return unless defined $value;
-    my @parts = split /(\$\w+)/, $value;
+    my @parts = split /(\$(?:{\w+}|\w+))/, $value;
     for my $part (@parts) {
-        if ( $part =~ /^\$(\w+)$/ and exists $self->config->{$1} ) {
-            $part = $self->_get($1) unless ref $self->config->{$1};
+        if ( $part =~ /^\$(?:{(\w+)}|(\w+))$/) {
+            my $name = $1 || $2;
+            if ( exists $self->config->{$name} ) {
+                $part = $self->_get($name) unless ref $self->config->{$name};
+            }
         }
     }
+    @parts = map { defined($_) ? $_ : "" } @parts;
     return join "", @parts;
 }
 
@@ -171,7 +177,8 @@ YAML::AppConfig - Manage configuration files with YAML and variable reference.
         - $foo_dir/place
     YAML
 
-    # Can also load from a file, just use file => instead of string.
+    # Can also load form a file or other YAML::AppConfig object.  
+    # Just use file => or object => instead of string =>
     my $conf = YAML::AppConfig->new(string => $string);
 
     # Get variables in two different ways, both equivalent.
@@ -205,12 +212,27 @@ a hash or array, otherwise it won't be interpolated.
 Either L<YAML> or L<YAML::Syck> is used underneath.  If L<YAML::Syck> is found
 it will be used over L<YAML>.
 
-=head1 CAVEATS
+=head1 USING VARIABLES
 
-Variables names must match /\$(\w+)/.  References can't be interpolated, and
-variables which are not found in the top level of the hash are not
-interpolated, in both cases the variable is left as is.  Lastly, circular
-references will throw an error.
+Variables names must match one of C</\$\w+/> or C</\${\w+}/>.  Just like in
+Perl the C<${foo}> form is to let you have values of the form C<${foo}bar> and
+have the variable be treated as C<$foo> instead of C<$foobar>.  
+
+If a variable is not recognized it will be left as is in the value, it won't be
+interpolated away or cause a warning.  Unknown variables are not recognized, as
+are variables that refer to references (e.g. hashes or arrays).  Currently
+variables can only address items in the top-most level of the YAML
+configuration file (i.e. the top most level of the hash the conf file
+represents).
+
+There is currently no way to escape a variable.  For simple cases this is not a
+problem because unrecongnized variables are left as is.  However, if you have a
+setting named C<foo> in the top of your YAML file and you want to use a literal
+value of C<'$foo'> then you are, in a way, out of luck.  As a work around, you
+can access the raw values from the Perl side by passing in C<$no_resolve> to
+C<get()>.  I realize this is not ideal and there are still cases were you are
+SOL, but I haven't hit this problem yet and so I have not been inclined to
+solve it.
 
 =head1 METHODS
 
@@ -228,6 +250,10 @@ The name of the file which contains your YAML configuration.
 =item string
 
 A string containing your YAML configuration.
+
+=item object
+
+A L<YAML::AppConfig> object which will be deep copied into your object.
 
 =item no_resolve
 

@@ -8,14 +8,12 @@ WriteMakefile(
     AUTHOR       => 'Matthew O\'Connor <matthew@canonical.org>',
     VERSION_FROM => 'lib/YAML/AppConfig.pm',
     PREREQ_PM    => {
-        pick_a_yaml(),
-        Storable => 0,
-        Carp => 0,
-        UNIVERSAL => 0,
+        'YAML::Syck' => 0,
+        'YAML'       => 0.38,
+        'Storable'   => 0,
+        'Carp'       => 0,
+        'UNIVERSAL'  => 0,
     },
 );
 
-sub pick_a_yaml {
-    eval { require YAML::Syck; };
-    return $@ ? ( 'YAML' => 0.38 ) : ( 'YAML::Syck' => 0 );
-}
+print "\nOnly one of YAML or YAML::Syck is required.\n\n";

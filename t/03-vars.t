@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 31;
+use Test::More tests => 39;
 do "t/lib/helpers.pl";
 
 BEGIN { use_ok('YAML::AppConfig') }
@@ -105,4 +105,35 @@ BEGIN { use_ok('YAML::AppConfig') }
         $app->get_nonvar, '$these are $non $vars with a var, $dapper',
         "Checking variables, no_resolve => 1"
     );
+}
+
+# TEST: Substituting in a variable with no value does not produce warnings
+{
+    my $app = YAML::AppConfig->new( string => "---\nnv:\nfoo: \$nv bar\n" );
+    ok($app, "Object created");
+    local $SIG{__WARN__} = sub { die };
+    eval { $app->get_nv };
+    ok( !$@, "Getting a setting with no value does not produce warnings." );
+    eval { $app->get_foo };
+    ok( !$@, "Getting a setting using a no value variable does not warn." );
+    is( $app->get_foo, " bar", "No value var used as empty string." );
+}
+
+# TEST: Make sure ${foo} style vars work.
+{
+    my $yaml =<<'YAML';
+---
+xyz: foo
+xyzbar: bad
+'{xyzbar': bad
+'xyz}bar': bad
+test1: ${xyz}bar
+test2: ${xyzbar
+test3: $xyz}bar
+YAML
+    my $app = YAML::AppConfig->new( string => $yaml);
+    ok($app, "Object created");
+    is( $app->get_test1, 'foobar', "Testing \${foo} type variables." );
+    is( $app->get_test2, '${xyzbar', "Testing \${foo} type variables." );
+    is( $app->get_test3, 'foo}bar', "Testing \${foo} type variables." );
 }
