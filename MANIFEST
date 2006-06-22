@@ -1,0 +1,15 @@
+lib/YAML/AppConfig.pm
+Makefile.PL
+MANIFEST
+t/00-load.t
+t/01-basic.t
+t/02-normal.t
+t/03-vars.t
+t/04-api.t
+t/data/basic.yaml
+t/data/config.yaml
+t/data/merge.yaml
+t/data/normal.yaml
+t/data/vars.yaml
+t/lib/helpers.pl
+META.yml                                 Module meta-data (added by MakeMaker)
