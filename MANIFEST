@@ -12,4 +12,5 @@ t/data/merge.yaml
 t/data/normal.yaml
 t/data/vars.yaml
 t/lib/helpers.pl
+t/lib/MatthewTestClass.pm
 META.yml                                 Module meta-data (added by MakeMaker)

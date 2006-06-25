@@ -1,7 +1,8 @@
 use strict;
 use warnings;
-use Test::More tests => 39;
+use Test::More tests => 53;
 do "t/lib/helpers.pl";
+use Storable qw(dclone);
 
 BEGIN { use_ok('YAML::AppConfig') }
 
@@ -53,9 +54,30 @@ BEGIN { use_ok('YAML::AppConfig') }
     is($app->get_circ3, "dogs lop bop", "Checking circularity removal.");
     is($app->get_circ4, "dogs lop", "Checking circularity removal.");
 
-    # Test that we can't load up references as vars.
-    is( $app->get_norefs, '$list will not render, nor will $hash',
-        "Checking that references are not used as variables." );
+    # Test that we references load up in the expected way within scalars.
+    like(
+        $app->get_refs, 
+        qr/^ARRAY\(.*?\) will not render, nor will HASH\(.*?\)$/,
+        "Checking that references are not used as variables." 
+    );
+
+    # Test that nesting and interpolation of references works
+    my $nestee = {
+        food => 'money',
+        drink => [{ cows => [qw(are good)]}, "money is good and moneyyummy"],
+    };
+    is_deeply(
+        $app->get_nest1,
+        {
+            blah => ["harry potter", "golem", "mickey mouse", $nestee],
+            loop => {foopy => [$nestee, "money is good"], boop => $nestee},
+        },
+        "Checking variable interpolation with references."
+    );
+
+    # Make sure circular references between references breaks
+    eval { $app->get_circrefref1 };
+    like( $@, qr/Circular reference/, "Checking that get_circreref1 failed" );
 
     # Look in the heart of our deep data structures
     is_deeply($app->get_list,
@@ -131,9 +153,35 @@ test1: ${xyz}bar
 test2: ${xyzbar
 test3: $xyz}bar
 YAML
-    my $app = YAML::AppConfig->new( string => $yaml);
+    my $app = YAML::AppConfig->new( string => $yaml );
     ok($app, "Object created");
     is( $app->get_test1, 'foobar', "Testing \${foo} type variables." );
     is( $app->get_test2, '${xyzbar', "Testing \${foo} type variables." );
     is( $app->get_test3, 'foo}bar', "Testing \${foo} type variables." );
+}
+
+# TEST: Escaping of variables.
+{
+    my $yaml =<<'YAML';
+---
+paulv: likes cheese
+nosubst: \$paulv a lot
+usens: $nosubst \$paulv $paulv \\\$paulv \\$paulv cows.
+YAML
+    my $ESCAPE_N = 10;
+
+    # Add \\$paulv, \\\$paulv, \\\\$paulv, ...
+    for my $n (1 .. $ESCAPE_N) {
+        $yaml .= "literal$n: " . '\\'x$n . "\\\$paulv stuffs\n";
+    }
+    my $app = YAML::AppConfig->new( string => $yaml );
+    ok($app, "Object created");
+
+    for my $n (1 .. $ESCAPE_N)  {
+        my $string = '\\'x$n . '$paulv stuffs';
+        is( $app->get("literal$n"), $string, "Testing escapes: $string" );
+    }
+    is( $app->get_usens, 
+        '$paulv a lot $paulv likes cheese \\\\$paulv \\$paulv cows.',
+        "Testing vars with escapes." );
 }
