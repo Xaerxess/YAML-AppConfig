@@ -8,7 +8,7 @@ use Storable qw(dclone);  # For Deep Copy
 ####################
 # Global Variables
 ####################
-our $VERSION = '0.14';
+our $VERSION = '0.16';
 our @YAML_PREFS = qw(YAML::Syck YAML);
 
 #########################
@@ -36,7 +36,8 @@ sub new {
 
     # Initialize internal state
     $self->_install_accessors();  # Install convenience accessors.
-    $self->{stack} = [];  # For finding circular references.
+    $self->{seen} = {};  # For finding circular references.
+    $self->{scope_stack} = [];  # For implementing dynamic variables.
 
     return $self;
 }
@@ -56,20 +57,19 @@ sub config_keys {
 
 sub get {
     my $self = shift;
-    $self->{stack} = [];    # Don't know if we exited cleanly, so empty stack.
+    $self->{seen} = {};    # Don't know if we exited cleanly, so clean up.
     return $self->_get(@_);
 }
 
-# Inner get, so we can clear the stack above.  Listed here for readability.
+# Inner get so we can clear the seen hash above.  Listed here for readability.
 sub _get {
     my ( $self, $key, $no_resolve ) = @_;
-    return unless exists $self->config->{$key};
+    return unless $self->_scope_has($key);
     return $self->config->{$key} if $self->{no_resolve} or $no_resolve;
-    croak "Circular reference in $key detected."
-        if grep {$key eq $_} @{$self->{stack}};
-    push @{$self->{stack}}, $key;
-    my $value = $self->_resolve_refs($self->config->{$key});
-    pop @{$self->{stack}};
+    croak "Circular reference in $key." if exists $self->{seen}->{$key};
+    $self->{seen}->{$key} = 1;
+    my $value = $self->_resolve_refs($self->_get_from_scope($key));
+    delete $self->{seen}->{$key};
     return $value;
 }
 
@@ -84,6 +84,19 @@ sub merge {
     for my $key ( $other_conf->config_keys ) {
         $self->set( $key, $other_conf->get( $key, 'no vars' ) );
     }
+}
+
+sub resolve {
+    my ( $self, $thing ) = @_;
+    $self->{seen} = {};  # Can't be sure this is empty, could've croaked.
+    return $self->_resolve_refs($thing);
+}
+
+sub dump {
+    my ( $self, $file ) = @_;
+    my $func = eval "\\&$self->{yaml_class}::" . ($file ? 'DumpFile' : 'Dump');
+    die "Could not find $func: $@" if $@;
+    $func->($file ? ($file) : (), $self->config);
 }
 
 ##############################
@@ -102,9 +115,11 @@ sub _resolve_refs {
     }
     elsif ( isa $value, 'HASH' ) {
         $value = dclone($value);
-        for my $key ( keys %$value) {
+        my @hidden = $self->_push_scope($value);
+        for my $key ( keys %$value ) {
             $value->{$key} = $self->_resolve_refs( $value->{$key} );
         }
+        $self->_pop_scope(@hidden);
         return $value;
     }
     elsif ( isa $value, 'ARRAY' ) {
@@ -124,6 +139,37 @@ sub _resolve_refs {
     return $value;
 }
 
+# List _push_scope(HashRef scope)
+#
+# Pushes a new scope onto the stack.  Variables in this scope are hidden from
+# the seen stack.  This allows us to reference variables in the current scope
+# even if they have the same name as a variable higher up in chain.  The
+# hidden variables are returned.
+sub _push_scope {
+    my ( $self, $scope ) = @_;
+    unshift @{ $self->{scope_stack} }, dclone($scope);
+    my @hidden;
+    for my $key ( keys %$scope ) {
+        if ( exists $self->{seen}->{$key} ) {
+            push @hidden, $key;
+            delete $self->{seen}->{$key};
+        }
+    }
+    return @hidden;
+}
+
+# void _pop_scope(@hidden)
+#
+# Removes the currently active scope from the stack and unhides any variables
+# passed in via @hidden, which is usually returned from _push_scope.
+sub _pop_scope {
+    my ( $self, @hidden ) = @_;
+    shift @{$self->{scope_stack}};
+    for my $key ( @hidden ) {
+        $self->{seen}->{$key} = 1;  # Unhide
+    }
+}
+
 # void _resolve_scalar(String $value)
 #
 # This function should only be called with strings (or numbers), not
@@ -138,13 +184,58 @@ sub _resolve_scalar {
     for my $part (@parts) {
         if ( $part =~ /^(?<!\\)\$(?:{(\w+)}|(\w+))$/) {
             my $name = $1 || $2;
-            $part = $self->_get($name) if exists $self->config->{$name};
+            $part = $self->_get($name) if $self->_scope_has($name);
         } else {
-            $part =~ s/(\\*)\\(\$(?:{(\w+)}|(\w+)))/$1$2/g; # Unescape slashes
+            # Unescape slashes.  Example: \\\$foo -> \\$foo, ditto with ${foo}
+            $part =~ s/(\\*)\\(\$(?:{(\w+)}|(\w+)))/$1$2/g;
         }
     }
     return $parts[0] if @parts == 1 and ref $parts[0]; # Preserve references
     return join "", map { defined($_) ? $_ : "" } @parts;
+}
+
+# HashRef _scope(void)
+#
+# Returns the current scope.  There is always a currenty defined scope, even
+# if it's just the global scope.
+sub _scope {
+    my $self = shift;
+    return $self->{scope_stack}->[0] || $self->config;
+}
+
+# List _scope_stack(void)
+#
+# Returns the list of currently active scopes.  The list is ordered from inner
+# most scope to outer most scope.  The global scope is always the last scope
+# in the list.
+sub _scope_stack {
+    my $self = shift;
+    return ( @{ $self->{scope_stack} }, $self->config );
+}
+
+# Boolean _get_from_scope(String key)
+#
+# This method returns true if the key is in any scope enclosing the current
+# scope or in the current scope.  False otherwise.
+sub _scope_has {
+    my ( $self, $name ) = @_;
+    for my $scope ( $self->_scope_stack ) {
+        return 1 if exists $scope->{$name};
+    }
+    return 0;
+}
+
+# Scalar _get_from_scope(String key)
+#
+# Given a key this method returns its value as it's defined in the inner most
+# enclosing scope containing the key.  That is to say, this method implements
+# the dyanmic scoping lookup for key.
+sub _get_from_scope {
+    my ( $self, $key ) = @_;
+    for my $scope ( $self->_scope_stack ) {
+        return $scope->{$key} if exists $scope->{$key};
+    }
+    return undef;
 }
 
 # void _load_yaml_class
@@ -207,82 +298,194 @@ YAML::AppConfig - Manage configuration files with YAML and variable reference.
 
     use YAML::AppConfig;
 
+    # An extended example.  YAML can also be loaded from a file.
     my $string = <<'YAML';
     ---
-    etc_dir: /opt/etc
-    foo_dir: $etc_dir/foo
-    bar_dir : ${foo_dir}bar
-    some_array:
-        - $foo_dir/place
+    root_dir: /opt
+    etc_dir: $root_dir/etc
+    cron_dir: $etc_dir/cron.d
+    var_dir $root_dir/var
+    var2_dir: ${var_dir}2
+    usr: $root_dir/usr
+    usr_local: $usr/local
+    libs:
+        system: $usr/lib
+        local: $usr_local/lib
+        perl:
+            vendor: $system/perl
+            site: $local/perl
+    escape_example: $root_dir/\$var_dir/\\$var_dir
     YAML
 
-    # Can also load form a file or other YAML::AppConfig object.  
-    # Just use file => or object => instead of string =>
+    # Load the YAML::AppConfig from the given YAML.
     my $conf = YAML::AppConfig->new(string => $string);
 
-    # Get variables in two different ways, both equivalent.
+    # Get settings in two different ways, both equivalent:
     $conf->get("etc_dir");    # returns /opt/etc
-    $conf->get_foo_dir;       # returns /opt/etc/foo
+    $conf->get_etc_dir;       # returns /opt/etc
 
-    # Get at the raw, uninterpolated values, in three equivalent ways:
-    $conf->get("etc_dir", 1); # returns '$etc_dir/foo'
-    $conf->get_etc_dir(1);    # returns '$etc_dir/foo'
-    $conf->config->{foo_dir}; # returns '$etc_dir/foo'
+    # Get raw settings (with no interpolation) in three equivalent ways:
+    $conf->get("etc_dir", 1); # returns '$root_dir/etc'
+    $conf->get_etc_dir(1);    # returns '$root_dir/etc'
+    $conf->config->{etc_dir}; # returns '$root_dir/etc'
 
     # Set etc_dir in three different ways, all equivalent.
     $conf->set("etc_dir", "/usr/local/etc");
     $conf->set_etc_dir("/usr/local/etc");
     $conf->config->{etc_dir} = "/usr/local/etc";
 
-    # Notice that changed variables affect other variables:
-    $config->get_foo_dir;          # now returns /usr/local/etc/foo
-    $config->get_some_array->[0];  # returns /usr/local/etc/foo/place
+    # Changing a setting can affect other settings:
+    $config->get_var2_dir;          # returns /opt/var2
+    $config->set_var_dir('/var/');  # change var_dr, which var2_dir uses.
+    $config->get_var2_dir;          # returns /var2
 
-    # You can escape variables for concatenation purposes:
-    $config->get_bar_dir;  # Returns '/usr/local/etc/foobar'
+    # Variables are dynamically scoped:
+    $config->get_libs->{perl}->{vendor};  # returns "/opt/usr/lib/perl"
+
+    # As seen above, variables are live and not static:
+    $config->usr_dir('cows are good: $root_dir');
+    $config->get_usr_dir();               # returns "cows are good: /opt"
+    $config->resolve('rm -fR $root_dir'); # returns "rm -fR /opt"
+
+    # Variables can be escaped, to avoid accidental interpolation:
+    $config->get_escape_example();  # returns "/opt/$var_dir/\$var_dir"
+
+    # Merge in other configurations:
+    my $yaml =<<'YAML';
+    ---
+    root_dir: cows
+    foo: are good
+    YAML
+    $config->merge(string => $yaml);
+    $config->get_root_dir();  # returns "cows"
+    $config->get_foo();  # returns "are good"
+
+    # Get the raw YAML for your current configuration:
+    $config->dump();  # returns YAML as string
+    $config->dump("./conf.yaml");  # Writes YAML to ./conf.yaml
 
 =head1 DESCRIPTION
 
-YAML::AppConfig extends the work done in L<Config::YAML> and
-L<YAML::ConfigFile> to allow variable reference between settings.  Essentialy
-your configuration file is a hash serialized to YAML.  Scalar values that have
-$foo_var type values in them will have interpolation done on them.  If $foo_var
-is a key in the configuration file it will be substituted, otherwise it will be
-left alone.  $foo_var must be a reference to a scalar value and not a hash or
-array, otherwise it won't be interpolated.
+L<YAML::AppConfig> extends the work done in L<Config::YAML> and
+L<YAML::ConfigFile> to allow more flexiable configuration files.
 
-Either L<YAML> or L<YAML::Syck> is used underneath.  You can also specify your
-own YAML parser by using the C<yaml_class> attribute to C<new()>.  By default
-the value of the C<yaml_class> attribute is preferred over everything.  Failing
-that, we check to see if C<YAML::Syck> or C<YAML> is loaded, and if so use that
-(prefering Syck).  If nothing is loaded and the C<yaml_class> attribute was not
-given then we try to load a YAML parser, starting with C<YAML::Syck> and then
-trying C<YAML>.  If this is Too AI for you and bites your ass then you can
-force behavior using C<yaml_class>, which is really why it exists.
+Your configuration is stored in YAML and then parsed and presented to you via
+L<YAML::AppConfig>.  Settings can be referenced using C<get> and C<set>
+methods and settings can refer to one another by using variables of the form
+C<$foo>, much in the style of C<AppConfig>.  See B<USING VARIABLES> below for
+more details.
+
+The underlying YAML parser is either L<YAML>, L<YAML::Syck> or one of your
+chosing.  See B<THE YAML LIBRARY> below for more information on how a YAML
+parser is picked.
+
+=head1 THE YAML LIBRARY
+
+At this time there are two API compatible YAML libraries for Perl.  L<YAML>
+and L<YAML::Syck>.  L<YAML::AppConfig> chooses which YAML parser to use as
+follows:
+
+=over
+
+=item yaml_class
+
+If C<yaml_class> is given to C<new> then it used above all other
+considerations.  You can use this to force use of L<YAML> or L<YAML::Syck>
+when L<YAML::AppConfig> isn't using the one you'd like.  You can also use it
+specify your own YAML parser, as long as it's API compatiable with L<YAML> and
+L<YAML::Syck>.
+
+=item The currently loaded YAML Parser
+
+If you don't specify C<yaml_class> then L<YAML::AppConfig> will default to
+using an already loaded YAML parser, e.g. one of L<YAML> or L<YAML::Syck>.  If
+both are loaded then L<YAML::Syck> is preferred.
+
+=item An installed YAML Parser.
+
+If no YAML parser has already been loaded then L<YAML::AppConfig> will attempt
+to load L<YAML::Syck> and failing that it will attempt to load L<YAML>.  If
+both fail then L<YAML::AppConfig> will C<croak> when you create a new object
+instance.
+
+=over
 
 =head1 USING VARIABLES
 
-Variable names refer to items at the top of the YAML configuration.  There is
-currently no way to refer to items nested inside the configuration.  If a
-variable is not known, because it doesn't match the name of a top level
-configuration key, then no substitution is done on it and it is left verbatim
-in the value.
+=head2 Variable Syntax
 
-Variables names must match one of C</\$\w+/> or C</\${\w+}/>.  Just like in
-Perl the C<${foo}> form is to let you have values of the form C<${foo}bar> and
-have the variable be treated as C<$foo> instead of C<$foobar>.  
+Variables refer to other settings inside the configuration file.
+L<YAML::AppConfig> variables have the same form as scalar variables in Perl.
+That is they begin with a dollar sign and then start with a letter or an
+underscore and then have zero or more letters, numbers, or underscores which
+follow.  For example, C<$foo>, C<$_bar>, and C<$cat_3> are all valid variable
+names.
 
-You can escape a variable by using a backslash before the dollar sign.  For
-example C<\$foo> will result in a literal C<$foo> being used, and thus no
-interpolation will be done on it.  If you should want a literal C<\$foo> then
-use two slashes, C<\\$foo>.  Should you want a literal C<\\$foo> then use three
-slashes, and so on.  Escaping can be used with C<${foo}> style variables too.
+Variable names can also be contained in curly brackets so you can have a
+variable side-by-side with text that might otherwise be read as the name of
+the variable itself.  For example, C<${foo}bar> is the the variable C<$foo>
+immediately followed by the literal text C<bar>.  Without the curly brackets
+L<YAML::AppConfig> would assume the variable name was C<$foobar>, which is
+incorrect.
 
-Variables can be references to more complex data structures.  So it's possible
-to define a list and assign it to a top level configuration key and then reuse
-that list anywhere else in the configuration file.  Just like in Perl, if a
-variable refering to a reference is used in a string the raw memory address
-will be its value, so be warned.
+Variables can also be escaped by using backslashes.  The text C<\$foo> will
+resolve to the literal string C<$foo>.  Likewise C<\\$foo> will resolve to the
+literal string C<\$foo>, and so on.
+
+=head2 Variable Scoping
+
+YAML is essentially a serialization language and so it follows that your
+configuration file is just an easy to read serialization of some data
+structure.  L<YAML::AppConfig> assumes the top most data structure is a hash
+and that variables are keys in that hash, or in some hash contained within.
+
+If every hash in the configuration file is thought of as a namespace then the
+variables can be said to be dynamically scoped.  For example, consider the
+following configuration file:
+
+    ---
+    foo: world
+    bar: hello
+    baz:
+        - $foo
+        - {foo: dogs, cats: $foo}
+        - $foo $bar
+    qux:
+        quack: $baz
+        
+In this sample configuration the array contained by C<$baz> has two elements.
+The first element resolves to the value C<hello>, the second element resolves
+to the value "dogs", and the third element resolves to C<hello world>.
+
+=head2 Variable Resolving
+
+Variables can also refer to entire data structures.  For example, C<$quack>
+will resolve to the same three element array as C<$baz>.  However, YAML
+natively gives you this ability and then some.  So consider using YAML's
+ability to take references to structures if L<YAML::AppConfig> is not
+providing enough power for your use case.
+
+In a L<YAML::AppConfig> object the variables are not resolved until you
+retrieve the variable (e.g. using C<get()>.  This allows you to change
+settings which are used by other settings and update many settings at once.
+For example, if I call C<set("baz", "cows")> then C<get("quack")> will resolve
+to C<cows>.
+
+If a variable can not be resolved because it doesn't correspond to a key
+currently in scope then the variable will be left verbatim in the text.
+Consider this example:
+
+    ---
+    foo:
+        bar: food
+    qux:
+        baz: $bar
+        qix: $no_exist
+
+In this example C<$baz> resolves to the literal string C<$bar> since C<$bar> is
+not visible within the current scope where C<$baz> is used.  Likewise, C<$qix>
+resolves to the literal string C<$no_exist> since there is no key in the
+current scope named C<no_exist>.
 
 =head1 METHODS
 
@@ -321,24 +524,28 @@ via C<require>.
 =head2 get(key, [no_resolve])
 
 Given C<$key> the value of that setting is returned, same as C<get_$key>.  If
-C<$no_resolve> is passed in then the raw value associated with C<$key> is
-returned, no variable interpolation is done.
+C<$no_resolve> is true then the raw value associated with C<$key> is returned,
+no variable interpolation is done.
+
+It is assumed that C<$key> refers to a setting at the top level of the
+configuration file.
 
 =head2 set(key, value)
 
-Similar to C<get()> except you can also provide a value for the setting.
+The setting C<$key> will have its value changed to C<$value>.  It is assumed
+that C<$key> refers to a setting at the top level of the configuration file.
 
 =head2 get_*([no_resolve])
 
 Convenience methods to retrieve values using a method, see C<get>.  For
-example if foo_bar is a configuration value in your YAML file then
-C<get_foo_bar> retrieves its value.  These methods are curried versions of
-C<get>.  These functions all take a single optional argument, C<$no_resolve>,
-which is the same as C<get()'s> C<$no_resolve>.
+example if C<foo_bar> is a configuration key in top level of your YAML file
+then C<get_foo_bar> retrieves its value.  These methods are curried versions
+of C<get>.  These functions all take a single optional argument,
+C<$no_resolve>, which is the same as C<get()'s> C<$no_resolve>.
 
 =head2 set_*(value)
 
-A convience method to set values using a method, see C<set> and C<get_*>.
+Convience methods to set values using a method, see C<set> and C<get_*>.
 These methods are curried versions of C<set>.
 
 =head2 config
@@ -355,6 +562,21 @@ Returns the keys in C<config()> sorted from first to last.
 Merge takes another YAML configuration and merges it into this one.  C<%args>
 are the same as those passed to C<new()>, so the configuration can come from a
 file, string, or existing L<YAML::AppConfig> object.
+
+=head2 resolve($scalar)
+
+C<resolve()> runs the internal parser on non-reference scalars and returns the
+result.  If the scalar is a reference then it is deep copied and a copy is
+returned where the non-reference leaves of the data struture are parsed and
+replaced as described in B<USING VARIABLES>.
+
+=head2 dump([$file])
+
+Serializes the current configuration using the YAML parser's Dump or, if
+C<$file> is given, DumpFile functions.  No interpolation is done, so the
+configuration is saved raw.  Things like comments will be lost, just as they
+would if you did C<Dump(Load($yaml))>, because that is what what calling
+C<dump()> on an instantiated object amounts to.
 
 =head1 AUTHORS
 

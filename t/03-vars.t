@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 53;
+use Test::More tests => 56;
 do "t/lib/helpers.pl";
 use Storable qw(dclone);
 
@@ -184,4 +184,21 @@ YAML
     is( $app->get_usens, 
         '$paulv a lot $paulv likes cheese \\\\$paulv \\$paulv cows.',
         "Testing vars with escapes." );
+}
+
+# TEST: self-circular references
+{
+    my $yaml = <<'YAML';
+---
+foo: $foo
+bar:
+   - cows
+   - $bar
+YAML
+    my $app = YAML::AppConfig->new( string => $yaml );
+    ok( $app, "Object loaded" );
+    eval { $app->get_foo };
+    like( $@, qr/Circular reference/, "Testing self-circular references. " );
+    eval { $app->get_bar };
+    like( $@, qr/Circular reference/, "Testing self-circular references. " );
 }
