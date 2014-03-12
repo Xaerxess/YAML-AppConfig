@@ -11,7 +11,7 @@ BEGIN { use_ok('YAML::AppConfig') }
     ok( $app, "Instantiated object from file." );
     isa_ok( $app, "YAML::AppConfig", "Asserting isa YAML::AppConfig" );
     my $c = 1;
-    for my $var qw(foo bar) {
+    for my $var (qw(foo bar)) {
         is( $app->get($var), $c, "Retrieving value for $var." );
         my $method = "get_$var";
         ok( $app->can($method), "Checking that \$app can get_$var." );
@@ -31,7 +31,7 @@ BEGIN { use_ok('YAML::AppConfig') }
     ok( $app, "Instantiated object from string." );
     isa_ok( $app, "YAML::AppConfig", "Asserting isa YAML::AppConfig" );
     my $c = 1;
-    for my $var qw(foo bar) {
+    for my $var (qw(foo bar)) {
         is( $app->get($var), $c, "Retrieving value for $var." );
         my $method = "get_$var";
         ok( $app->can($method), "Checking that \$app can get_$var." );
