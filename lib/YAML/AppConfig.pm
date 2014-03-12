@@ -8,7 +8,7 @@ use Storable qw(dclone);  # For Deep Copy
 ####################
 # Global Variables
 ####################
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 our @YAML_PREFS = qw(YAML::Syck YAML);
 
 #########################
