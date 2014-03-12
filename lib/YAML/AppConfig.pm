@@ -408,7 +408,7 @@ to load L<YAML::Syck> and failing that it will attempt to load L<YAML>.  If
 both fail then L<YAML::AppConfig> will C<croak> when you create a new object
 instance.
 
-=over
+=back
 
 =head1 USING VARIABLES
 
