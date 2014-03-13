@@ -2,6 +2,8 @@ Revision history for Perl module YAML::AppConfig
 
 Development XAERXESS
 
+0.18 2014-03-13T19:00:00+0100 XAERXESS
+
  [ Bug fixes ]
  - fixed POD warning (RT #68118 by Damyan Ivanov <dmn@debian.org>)
  - used ref instead of isa (RT #65539 by Guillaume Rousse <guillomovitch@gmail.com>)
