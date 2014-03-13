@@ -4,8 +4,8 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME         => 'YAML::AppConfig',
-    ABSTRACT     => 'Manage config files with YAML and variable references.',
     AUTHOR       => 'Matthew O\'Connor <matthew@canonical.org>',
+    ABSTRACT_FROM => 'lib/YAML/AppConfig.pm',
     VERSION_FROM => 'lib/YAML/AppConfig.pm',
     PREREQ_PM    => {
         get_yamls(),

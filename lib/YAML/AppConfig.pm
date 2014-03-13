@@ -292,7 +292,7 @@ __END__
 
 =head1 NAME
 
-YAML::AppConfig - Manage configuration files with YAML and variable reference.
+YAML::AppConfig - Manage configuration files with YAML and variable references.
 
 =head1 SYNOPSIS
 
