@@ -368,7 +368,7 @@ YAML::AppConfig - Manage configuration files with YAML and variable references.
 =head1 DESCRIPTION
 
 L<YAML::AppConfig> extends the work done in L<Config::YAML> and
-L<YAML::ConfigFile> to allow more flexiable configuration files.
+L<YAML::ConfigFile> to allow more flexible configuration files.
 
 Your configuration is stored in YAML and then parsed and presented to you via
 L<YAML::AppConfig>.  Settings can be referenced using C<get> and C<set>
@@ -377,7 +377,7 @@ C<$foo>, much in the style of C<AppConfig>.  See L</"USING VARIABLES"> below
 for more details.
 
 The underlying YAML parser is either L<YAML>, L<YAML::Syck> or one of your
-chosing.  See L</"THE YAML LIBRARY"> below for more information on how a YAML
+choice.  See L</"THE YAML LIBRARY"> below for more information on how a YAML
 parser is picked.
 
 =head1 THE YAML LIBRARY
@@ -393,7 +393,7 @@ follows:
 If C<yaml_class> is given to C<new> then it used above all other
 considerations.  You can use this to force use of L<YAML> or L<YAML::Syck>
 when L<YAML::AppConfig> isn't using the one you'd like.  You can also use it
-specify your own YAML parser, as long as it's API compatiable with L<YAML> and
+specify your own YAML parser, as long as it's API compatible with L<YAML> and
 L<YAML::Syck>.
 
 =item The currently loaded YAML Parser
@@ -546,7 +546,7 @@ C<$no_resolve>, which is the same as C<get()'s> C<$no_resolve>.
 
 =head2 set_*(value)
 
-Convience methods to set values using a method, see C<set> and C<get_*>.
+Convenience methods to set values using a method, see C<set> and C<get_*>.
 These methods are curried versions of C<set>.
 
 =head2 config
@@ -568,7 +568,7 @@ file, string, or existing L<YAML::AppConfig> object.
 
 C<resolve()> runs the internal parser on non-reference scalars and returns the
 result.  If the scalar is a reference then it is deep copied and a copy is
-returned where the non-reference leaves of the data struture are parsed and
+returned where the non-reference leaves of the data structure are parsed and
 replaced as described in L</"USING VARIABLES">.
 
 =head2 dump([$file])
