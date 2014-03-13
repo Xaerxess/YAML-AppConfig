@@ -290,6 +290,8 @@ sub _install_accessors {
 1;
 __END__
 
+=encoding UTF-8
+
 =head1 NAME
 
 YAML::AppConfig - Manage configuration files with YAML and variable references.
@@ -372,11 +374,11 @@ L<YAML::ConfigFile> to allow more flexiable configuration files.
 Your configuration is stored in YAML and then parsed and presented to you via
 L<YAML::AppConfig>.  Settings can be referenced using C<get> and C<set>
 methods and settings can refer to one another by using variables of the form
-C<$foo>, much in the style of C<AppConfig>.  See B<USING VARIABLES> below for
-more details.
+C<$foo>, much in the style of C<AppConfig>.  See L</"USING VARIABLES"> below
+for more details.
 
 The underlying YAML parser is either L<YAML>, L<YAML::Syck> or one of your
-chosing.  See B<THE YAML LIBRARY> below for more information on how a YAML
+chosing.  See L</"THE YAML LIBRARY"> below for more information on how a YAML
 parser is picked.
 
 =head1 THE YAML LIBRARY
@@ -568,7 +570,7 @@ file, string, or existing L<YAML::AppConfig> object.
 C<resolve()> runs the internal parser on non-reference scalars and returns the
 result.  If the scalar is a reference then it is deep copied and a copy is
 returned where the non-reference leaves of the data struture are parsed and
-replaced as described in B<USING VARIABLES>.
+replaced as described in L</"USING VARIABLES">.
 
 =head2 dump([$file])
 
@@ -585,13 +587,17 @@ Matthew O'Connor E<lt>matthew@canonical.orgE<gt>
 Original implementations by Kirrily "Skud" Robert (as L<YAML::ConfigFile>) and
 Shawn Boyette (as L<Config::YAML>).
 
+Currently maintained by Grzegorz Rożniecki E<lt>xaerxess@gmail.comE<gt>.
+
 =head1 SEE ALSO
 
 L<YAML>, L<YAML::Syck>, L<Config::YAML>, L<YAML::ConfigFile>
 
-=head1 COPYRIGHT
+=head1 COPYRIGHT AND LICENSE
 
 Copyright 2006 Matthew O'Connor, All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
+
+=cut
