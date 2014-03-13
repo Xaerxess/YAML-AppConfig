@@ -2,7 +2,6 @@ package YAML::AppConfig;
 use strict;
 use warnings;
 use Carp;
-use UNIVERSAL qw(isa);
 use Storable qw(dclone);  # For Deep Copy
 
 ####################
@@ -113,7 +112,7 @@ sub _resolve_refs {
     if ( not ref $value ) {
         $value = $self->_resolve_scalar($value);
     }
-    elsif ( isa $value, 'HASH' ) {
+    elsif (ref $value eq 'HASH' ) {
         $value = dclone($value);
         my @hidden = $self->_push_scope($value);
         for my $key ( keys %$value ) {
@@ -122,13 +121,13 @@ sub _resolve_refs {
         $self->_pop_scope(@hidden);
         return $value;
     }
-    elsif ( isa $value, 'ARRAY' ) {
+    elsif (ref $value eq 'ARRAY' ) {
         $value = dclone($value);
         for my $item (@$value) {
             $item = $self->_resolve_refs( $item );
         }
     }
-    elsif ( isa $value, 'SCALAR' ) {
+    elsif (ref $value eq 'SCALAR' ) {
         $value = $self->_resolve_scalar($$value);
     } 
     else {
