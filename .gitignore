@@ -4,3 +4,4 @@ MYMETA.yml
 Makefile
 Makefile.old
 pm_to_blib
+t/data/dump.yaml
