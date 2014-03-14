@@ -10,9 +10,10 @@ my %WriteMakefileArgs = (
     MIN_PERL_VERSION => '5.6.0',
     PREREQ_PM    => {
         get_yamls(),
+        'strict'     => 0,
+        'warnings'   => 0,
         'Storable'   => 0,
         'Carp'       => 0,
-        'UNIVERSAL'  => 0,
     },
     TEST_REQUIRES => {
         'Test::More' => 0,
