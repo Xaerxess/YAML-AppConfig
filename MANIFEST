@@ -3,6 +3,7 @@ lib/YAML/AppConfig.pm
 LICENSE
 Makefile.PL
 MANIFEST
+README.md
 t/00-load.t
 t/01-basic.t
 t/02-normal.t
