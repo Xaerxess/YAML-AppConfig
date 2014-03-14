@@ -2,6 +2,18 @@ Revision history for Perl module YAML::AppConfig
 
 Development XAERXESS
 
+0.19 2014-03-14T09:00:00+0100 XAERXESS
+
+ [ Bug fixes ]
+ - fixed hash randomization problem in test
+   (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=711627#19
+   by Csillag Tamas <cstamas@cstamas.hu>)
+ - META.{yaml,json} were missing prereqs
+
+ [ Other changes ]
+ - included missing README file
+ - cleaned up prereqs
+
 0.18 2014-03-13T19:00:00+0100 XAERXESS
 
  [ Bug fixes ]
